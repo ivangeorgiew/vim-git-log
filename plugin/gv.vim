@@ -28,23 +28,12 @@ function! s:shrug()
   call s:warn('¯\_(ツ)_/¯')
 endfunction
 
-let s:begin = '^[^0-9]*[0-9]\{4}-[0-9]\{2}-[0-9]\{2}\s\+'
-
 function! gv#sha(...)
-  return matchstr(get(a:000, 0, getline('.')), s:begin.'\zs[a-f0-9]\+')
-endfunction
-
-function! s:move(flag)
-  let [l, c] = searchpos(s:begin, a:flag)
-  return l ? printf('%dG%d|', l, c) : ''
+  return matchstr(get(a:000, 0, getline('.')), '^[^a-f0-9]*\zs[a-f0-9]\{6,}')
 endfunction
 
 function! s:browse(url)
   call netrw#BrowseX(b:git_origin.a:url, 0)
-endfunction
-
-function! s:tabnew()
-  execute (tabpagenr()-1).'tabnew'
 endfunction
 
 function! s:gbrowse()
@@ -83,7 +72,7 @@ endfunction
 
 function! s:split(tab)
   if a:tab
-    call s:tabnew()
+    execute 'tabnew'
   elseif getwinvar(winnr('$'), 'gv')
     $wincmd w
     enew
@@ -128,22 +117,18 @@ endfunction
 function! s:syntax()
   setf GV
   syn clear
-  syn match gvInfo    /^[^0-9]*\zs[0-9-]\+\s\+[a-f0-9]\+ / contains=gvDate,gvSha nextgroup=gvMessage,gvMeta
-  syn match gvDate    /\S\+ / contained
+  syn match gvSymbols /^\([\*\\|\/]\| \)\+/ contains=gvAll,gvLine nextgroup=gvInfo
+  syn match gvAll     /\*/ contained
+  syn match gvLine    /[\\|\/]/ contained
+  syn match gvInfo    /[a-f0-9]\{6,}\s\+".\+"\s\+([^)]\+)$/ contained contains=gvSha,gvAuthor,gvDate
   syn match gvSha     /[a-f0-9]\{6,}/ contained
-  syn match gvMessage /.* \ze(.\{-})$/ contained contains=gvTag,gvGitHub,gvJira nextgroup=gvAuthor
-  syn match gvAuthor  /.*$/ contained
-  syn match gvMeta    /([^)]\+) / contained contains=gvTag nextgroup=gvMessage
-  syn match gvTag     /(tag:[^)]\+)/ contained
-  syn match gvGitHub  /\<#[0-9]\+\>/ contained
-  syn match gvJira    /\<[A-Z]\+-[0-9]\+\>/ contained
-  hi def link gvDate   Number
-  hi def link gvSha    Identifier
-  hi def link gvTag    Constant
-  hi def link gvGitHub Label
-  hi def link gvJira   Label
-  hi def link gvMeta   Conditional
-  hi def link gvAuthor String
+  syn match gvAuthor  /".\+"/ contained
+  syn match gvDate    /([^)]\+)/ contained
+  hi def link gvAuthor Include
+  hi def link gvSha    Number
+  hi def link gvDate   Identifier
+  hi def link gvAll    Conditional
+  hi def link gvLine   Type
 
   syn match gvAdded     "^\W*\zsA\t.*"
   syn match gvDeleted   "^\W*\zsD\t.*"
@@ -165,32 +150,20 @@ function! s:syntax()
 endfunction
 
 function! s:maps()
-  nnoremap <silent> <buffer> q    :$wincmd w <bar> close<cr>
-  nnoremap <silent> <buffer> gb   :call <sid>gbrowse()<cr>
-  nnoremap <silent> <buffer> <cr> :call <sid>open(0)<cr>
-  nnoremap <silent> <buffer> o    :call <sid>open(0)<cr>
-  nnoremap <silent> <buffer> O    :call <sid>open(0, 1)<cr>
-  xnoremap <silent> <buffer> <cr> :<c-u>call <sid>open(1)<cr>
-  xnoremap <silent> <buffer> o    :<c-u>call <sid>open(1)<cr>
-  xnoremap <silent> <buffer> O    :<c-u>call <sid>open(1, 1)<cr>
-  nnoremap          <buffer> <expr> .  <sid>dot()
-  nnoremap <silent> <buffer> <expr> ]] <sid>move('')
-  nnoremap <silent> <buffer> <expr> ][ <sid>move('')
-  nnoremap <silent> <buffer> <expr> [[ <sid>move('b')
-  nnoremap <silent> <buffer> <expr> [] <sid>move('b')
-  xnoremap <silent> <buffer> <expr> ]] <sid>move('')
-  xnoremap <silent> <buffer> <expr> ][ <sid>move('')
-  xnoremap <silent> <buffer> <expr> [[ <sid>move('b')
-  xnoremap <silent> <buffer> <expr> [] <sid>move('b')
-
-  nmap              <buffer> <C-n> ]]o
-  nmap              <buffer> <C-p> [[o
-  xmap              <buffer> <C-n> ]]ogv
-  xmap              <buffer> <C-p> [[ogv
+  nnoremap <silent> <buffer> q     :$wincmd w <bar> close<cr>
+  nnoremap <silent> <buffer> gb    :call <sid>gbrowse()<cr>
+  nnoremap <silent> <buffer> <cr>  :call <sid>open(0)<cr>
+  nnoremap <silent> <buffer> o     :call <sid>open(0)<cr>
+  nnoremap <silent> <buffer> <C-t> :call <sid>open(0, 1)<cr>
+  xnoremap <silent> <buffer> <cr>  :<c-u>call <sid>open(1)<cr>
+  xnoremap <silent> <buffer> o     :<c-u>call <sid>open(1)<cr>
+  xnoremap <silent> <buffer> <C-t> :<c-u>call <sid>open(1, 1)<cr>
 endfunction
 
 function! s:setup(git_dir, git_origin)
-  call s:tabnew()
+  if (line('$') != 1 || getline(1) != '') && &ft != 'GV'
+    execute 'tabnew'
+  endif
   call s:scratch()
 
   if exists('g:fugitive_github_domains')
@@ -223,8 +196,9 @@ endfunction
 
 function! s:fill(cmd)
   setlocal modifiable
-  silent execute 'read' escape('!'.a:cmd, '%')
-  normal! gg"_dd
+  silent execute '0r' escape('!'.a:cmd, '%')
+  silent execute '%s/\s\+$//e'
+  normal! gg
   setlocal nomodifiable
 endfunction
 
@@ -251,7 +225,7 @@ function! s:log_opts(fugitive_repo, bang, visual, line1, line2)
 endfunction
 
 function! s:list(fugitive_repo, log_opts)
-  let default_opts = ['--color=never', '--date=short', '--format=%cd %h%d %s (%an)']
+  let default_opts = ['--color=never', '--graph', '--full-history', '--date=relative', '--format=%h "%an" (%cd) %n%s%n']
   let git_args = ['log'] + default_opts + a:log_opts
   let git_log_cmd = call(a:fugitive_repo.git_command, git_args, a:fugitive_repo)
 
@@ -260,7 +234,7 @@ function! s:list(fugitive_repo, log_opts)
   silent exe (bufexists(bufname) ? 'buffer' : 'file') fnameescape(bufname)
 
   call s:fill(git_log_cmd)
-  setlocal nowrap tabstop=8 cursorline iskeyword+=#
+  setlocal wrap tabstop=8 cursorline iskeyword+=#
 
   if !exists(':Gbrowse')
     doautocmd <nomodeline> User Fugitive
@@ -268,7 +242,7 @@ function! s:list(fugitive_repo, log_opts)
   call s:maps()
   call s:syntax()
   redraw
-  echo 'o: open split / O: open tab / gb: Gbrowse / q: quit'
+  echo 'o: open split / C-t: open tab / gb: Gbrowse / q: quit'
 endfunction
 
 function! s:trim(arg)
