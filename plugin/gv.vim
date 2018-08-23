@@ -306,8 +306,8 @@ function! s:gl(buf, visual)
   nnoremap <buffer> o <cr><c-w><c-w>
   nnoremap <buffer> O :call <sid>gld()<cr>
   nnoremap <buffer> q :tabclose<cr>
-  call matchadd('Conceal', '^fugitive:///.\{-}\.git//')
-  call matchadd('Conceal', '^fugitive:///.\{-}\.git//\x\{7}\zs.\{-}||')
+  call matchadd('Conceal', '^fugitive://.\{-}\.git//')
+  call matchadd('Conceal', '^fugitive://.\{-}\.git//\x\{7}\zs.\{-}||')
   setlocal concealcursor=nv conceallevel=3 nowrap
   let w:quickfix_title = 'o: open / o (in visual): diff / O: open (tab) / q: quit'
 endfunction
@@ -360,4 +360,8 @@ function! s:gv(bang, visual, line1, line2, args) abort
   endtry
 endfunction
 
-command! -bang -nargs=* -range=0 GV call s:gv(<bang>0, <count>, <line1>, <line2>, <q-args>)
+function! s:gvcomplete(a, l, p) abort
+  return fugitive#repo().superglob(a:a)
+endfunction
+
+command! -bang -nargs=* -range=0 -complete=customlist,s:gvcomplete GV call s:gv(<bang>0, <count>, <line1>, <line2>, <q-args>)
